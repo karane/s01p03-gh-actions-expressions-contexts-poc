@@ -1,0 +1,71 @@
+name: Expressions & Contexts
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  inspect:
+    name: Inspect Contexts
+    runs-on: ubuntu-latest
+    env:
+      TEAM: platform
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      # github context: event metadata available on every run
+      - name: Show github context
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Actor: ${{ github.actor }}"
+
+      # env context: values from the env: block above
+      - name: Show env context
+        run: echo "Team is ${{ env.TEAM }}"
+
+      # runner context: info about the current runner machine
+      - name: Show runner context
+        run: echo "OS is ${{ runner.os }}, temp dir is ${{ runner.temp }}"
+
+      # contains()/startsWith(): string-matching functions used in if: conditions
+      - name: Only on feature branches
+        if: startsWith(github.ref, 'refs/heads/feature/')
+        run: echo "This is a feature branch build"
+
+      - name: Only when commit message mentions ci
+        if: contains(github.event.head_commit.message, 'ci')
+        run: echo "Commit message mentions ci"
+
+      # format(): template a string from context values
+      - name: Build a formatted label
+        id: label
+        run: echo "text=${{ format('run {0} on {1}', github.run_number, runner.os) }}" >> "$GITHUB_OUTPUT"
+
+      - name: Show formatted label
+        run: echo "Label is ${{ steps.label.outputs.text }}"
+
+      # toJSON()/fromJSON(): serialize/deserialize structured data between steps
+      - name: Produce JSON payload
+        id: payload
+        run: echo 'json={"branch":"${{ github.ref_name }}","run":${{ github.run_number }}}' >> "$GITHUB_OUTPUT"
+
+      - name: Read JSON payload back
+        run: |
+          echo "Branch from JSON: ${{ fromJSON(steps.payload.outputs.json).branch }}"
+          echo "Full context dump: ${{ toJSON(github.event_name) }}"
+
+  downstream:
+    name: Use Upstream Outputs
+    runs-on: ubuntu-latest
+    needs: inspect
+
+    steps:
+      # needs context: reference another job's outputs, evaluated across job boundaries
+      - name: Confirm inspect finished
+        run: echo "inspect job result was ${{ needs.inspect.result }}"
